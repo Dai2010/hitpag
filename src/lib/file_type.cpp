@@ -129,7 +129,11 @@ namespace file_type {
 
     FileType recognize_source_type(const std::string& source_path_str) {
         if (!fs::exists(source_path_str)) {
-            error::throw_error(error::ErrorCode::INVALID_SOURCE, {{"PATH", source_path_str}});
+            const std::string reason = source_path_str.empty()
+                ? "source path cannot be empty"
+                : "path does not exist";
+            error::throw_error(error::ErrorCode::INVALID_SOURCE,
+                               {{"PATH", source_path_str}, {"REASON", reason}});
         }
 
         if (fs::is_directory(source_path_str)) return FileType::DIRECTORY;
