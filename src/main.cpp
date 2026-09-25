@@ -58,6 +58,9 @@ int main(int argc, char* argv[]) {
 
         if (options.tui_mode) {
             tui::run(options, tracker);
+        } else if (options.source_path.empty()) {
+            error::throw_error(error::ErrorCode::MISSING_ARGS,
+                               {{"ADDITIONAL_INFO", "Source path is required. Usage: hitpag SOURCE_PATH TARGET_PATH"}});
         } else if (options.interactive_mode) {
             interactive::run(options, tracker);
         } else {
