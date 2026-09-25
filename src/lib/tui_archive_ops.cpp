@@ -825,13 +825,52 @@ namespace tui::archive_ops {
 
     bool extract_preview_file(const std::string& archive_path, const std::string& entry_path, const std::string& output_dir, file_type::FileType type, const std::string& password, std::string& extracted_path) {
         extracted_path.clear();
+        fs::path output_root(output_dir);
+        fs::path entry(entry_path);
+        if (entry.empty() || entry.is_absolute() || entry.has_root_name() || entry.has_root_directory()) {
+            return false;
+        }
+        for (const auto& component : entry) {
+            if (component == "..") {
+                return false;
+            }
+        }
+
         if (!extract_single(archive_path, entry_path, output_dir, type, password)) {
             return false;
         }
 
-        fs::path expected = fs::path(output_dir) / fs::path(entry_path);
+        std::error_code root_ec;
+        const fs::path canonical_root = fs::weakly_canonical(output_root, root_ec);
+        if (root_ec) {
+            return false;
+        }
+
+        auto is_safe_regular_file = [&](const fs::path& candidate) {
+            std::error_code ec;
+            if (fs::is_symlink(fs::symlink_status(candidate, ec)) || ec) {
+                return false;
+            }
+            if (!fs::is_regular_file(candidate, ec) || ec) {
+                return false;
+            }
+            const fs::path canonical_candidate = fs::weakly_canonical(candidate, ec);
+            if (ec) {
+                return false;
+            }
+            auto root_it = canonical_root.begin();
+            auto candidate_it = canonical_candidate.begin();
+            for (; root_it != canonical_root.end() && candidate_it != canonical_candidate.end(); ++root_it, ++candidate_it) {
+                if (*root_it != *candidate_it) {
+                    return false;
+                }
+            }
+            return root_it == canonical_root.end();
+        };
+
+        fs::path expected = output_root / entry;
         std::error_code ec;
-        if (fs::is_regular_file(expected, ec)) {
+        if (is_safe_regular_file(expected)) {
             extracted_path = expected.string();
             return true;
         }
@@ -840,8 +879,8 @@ namespace tui::archive_ops {
         // archive name rather than an archive entry path.
         if (type == file_type::FileType::ARCHIVE_LZ4 || type == file_type::FileType::ARCHIVE_ZSTD) {
             fs::path archive(archive_path);
-            fs::path single = fs::path(output_dir) / archive.stem();
-            if (fs::is_regular_file(single, ec)) {
+            fs::path single = output_root / archive.stem();
+            if (is_safe_regular_file(single)) {
                 extracted_path = single.string();
                 return true;
             }
@@ -852,7 +891,7 @@ namespace tui::archive_ops {
         if (fs::exists(output_dir, ec)) {
             for (const auto& item : fs::recursive_directory_iterator(output_dir, ec)) {
                 if (ec) break;
-                if (fs::is_regular_file(item.path(), ec)) {
+                if (is_safe_regular_file(item.path())) {
                     extracted_path = item.path().string();
                     return true;
                 }

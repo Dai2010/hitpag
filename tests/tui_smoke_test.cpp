@@ -179,6 +179,25 @@ namespace {
         return ok;
     }
 
+    bool test_audio_preview_guards(const fs::path& tmp_root) {
+        bool ok = true;
+        ok &= expect(tui::archive_ops::is_audio_file("track.MP3"), "audio detection should be case-insensitive");
+        ok &= expect(!tui::archive_ops::is_audio_file("track.txt"), "text files should not be treated as audio");
+
+        fs::path output_dir = tmp_root / "audio-preview-guard";
+        std::error_code ec;
+        fs::create_directories(output_dir, ec);
+        ok &= expect(!ec, "should create audio preview guard directory");
+
+        std::string extracted_path;
+        ok &= expect(
+            !tui::archive_ops::extract_preview_file(
+                "missing.zip", "../outside.mp3", output_dir.string(), file_type::FileType::ARCHIVE_ZIP, "", extracted_path),
+            "audio preview should reject an entry that escapes the output directory");
+        ok &= expect(extracted_path.empty(), "rejected audio preview should not return a path");
+        return ok;
+    }
+
     bool test_single_file_archive(const fs::path& tmp_root,
                                   const std::string& tool,
                                   const std::string& command,
@@ -230,6 +249,7 @@ int main() {
     ok &= expect(write_text_file(single_file, "hello from single-file archive\n"), "should create single-file input");
 
     ok &= test_tar_text_extraction(tmp_root.path());
+    ok &= test_audio_preview_guards(tmp_root.path());
     ok &= test_single_file_archive(
         tmp_root.path(),
         "lz4",

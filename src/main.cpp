@@ -48,6 +48,7 @@ int main(int argc, char* argv[]) {
             !options.target_path.empty()) {
             file_type::FileType source_type = file_type::recognize_source_type(options.target_path);
             if (source_type != file_type::FileType::UNKNOWN &&
+                source_type != file_type::FileType::REGULAR_FILE &&
                 source_type != file_type::FileType::DIRECTORY) {
                 options.tui_mode = true;
                 options.source_path = options.target_path;
