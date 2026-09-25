@@ -823,6 +823,92 @@ namespace tui::archive_ops {
         return false;
     }
 
+    bool extract_preview_file(const std::string& archive_path, const std::string& entry_path, const std::string& output_dir, file_type::FileType type, const std::string& password, std::string& extracted_path) {
+        extracted_path.clear();
+        if (!extract_single(archive_path, entry_path, output_dir, type, password)) {
+            return false;
+        }
+
+        fs::path expected = fs::path(output_dir) / fs::path(entry_path);
+        std::error_code ec;
+        if (fs::is_regular_file(expected, ec)) {
+            extracted_path = expected.string();
+            return true;
+        }
+
+        // lz4/zstd are single-file formats and derive the output name from the
+        // archive name rather than an archive entry path.
+        if (type == file_type::FileType::ARCHIVE_LZ4 || type == file_type::FileType::ARCHIVE_ZSTD) {
+            fs::path archive(archive_path);
+            fs::path single = fs::path(output_dir) / archive.stem();
+            if (fs::is_regular_file(single, ec)) {
+                extracted_path = single.string();
+                return true;
+            }
+        }
+
+        // Some archive tools normalize or rewrite entry paths. Locate the
+        // extracted regular file as a final fallback.
+        if (fs::exists(output_dir, ec)) {
+            for (const auto& item : fs::recursive_directory_iterator(output_dir, ec)) {
+                if (ec) break;
+                if (fs::is_regular_file(item.path(), ec)) {
+                    extracted_path = item.path().string();
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    bool is_audio_file(const std::string& path) {
+        std::string extension = fs::path(path).extension().string();
+        std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char c) {
+            return static_cast<char>(std::tolower(c));
+        });
+        static const std::vector<std::string> extensions = {
+            ".mp3", ".wav", ".ogg", ".oga", ".flac", ".m4a", ".aac", ".opus", ".wma", ".aiff", ".alac"
+        };
+        return std::find(extensions.begin(), extensions.end(), extension) != extensions.end();
+    }
+
+    AudioPlaybackResult play_audio_file(const std::string& path) {
+        AudioPlaybackResult result;
+        std::vector<std::string> command;
+
+        // mpv and ffplay work on both desktop Linux and Termux when installed.
+        if (operation::is_tool_available("mpv")) {
+            command = {"mpv", "--no-video", "--really-quiet", path};
+            result.player = "mpv";
+        } else if (operation::is_tool_available("ffplay")) {
+            command = {"ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet", path};
+            result.player = "ffplay";
+        } else if (operation::is_tool_available("termux-media-player")) {
+            command = {"termux-media-player", "play", path};
+            result.player = "termux-media-player";
+            result.keep_file = true;
+        } else if (operation::is_tool_available("paplay")) {
+            command = {"paplay", path};
+            result.player = "paplay";
+        } else if (operation::is_tool_available("aplay")) {
+            command = {"aplay", path};
+            result.player = "aplay";
+        } else if (operation::is_tool_available("xdg-open")) {
+            command = {"xdg-open", path};
+            result.player = "xdg-open";
+            result.keep_file = true;
+        } else if (operation::is_tool_available("termux-open")) {
+            command = {"termux-open", path};
+            result.player = "termux-open";
+            result.keep_file = true;
+        } else {
+            return result;
+        }
+
+        result.success = run_command_status(command) == 0;
+        return result;
+    }
+
     bool is_text_content(const std::string& content) {
         if (content.empty()) return false;
         if (content.size() > 1024 * 1024) return false;

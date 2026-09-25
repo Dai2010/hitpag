@@ -23,12 +23,14 @@
 #include <ftxui/dom/elements.hpp>
 #include <ftxui/dom/node.hpp>
 #include <ftxui/screen/screen.hpp>
+#include <ftxui/screen/terminal.hpp>
 
 #include <algorithm>
 #include <cctype>
 #include <functional>
 #include <filesystem>
 #include <iostream>
+#include <chrono>
 #include <string>
 #include <vector>
 
@@ -309,7 +311,73 @@ namespace tui {
             show_alert(i18n::get("tui_extract_alert_title"), message, !success);
         };
 
+        auto play_selected_audio = [&]() {
+            const auto* entry = list.selected_entry();
+            if (!entry || entry->is_directory || !archive_ops::is_audio_file(entry->path)) {
+                show_alert(i18n::get("tui_audio_preview_title"), i18n::get("tui_audio_select_file"), true);
+                return;
+            }
+
+            const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
+            std::error_code ec;
+            fs::path temp_root = fs::temp_directory_path(ec);
+            if (ec) {
+                show_alert(i18n::get("tui_audio_preview_title"), i18n::get("tui_audio_extract_failed"), true);
+                return;
+            }
+            fs::path temp_dir = temp_root / ("hitpag-audio-" + std::to_string(stamp));
+            fs::create_directories(temp_dir, ec);
+            if (ec) {
+                show_alert(i18n::get("tui_audio_preview_title"), i18n::get("tui_audio_extract_failed"), true);
+                return;
+            }
+
+            std::string extracted_path;
+            bool extracted = false;
+            archive_ops::AudioPlaybackResult playback;
+            try {
+                auto run_audio = screen.WithRestoredIO([&] {
+                    extracted = archive_ops::extract_preview_file(
+                        archive_path, entry->path, temp_dir.string(), type, options.password, extracted_path);
+                    if (extracted) {
+                        playback = archive_ops::play_audio_file(extracted_path);
+                    }
+                });
+                run_audio();
+            } catch (...) {
+                extracted = false;
+            }
+
+            if (!extracted) {
+                fs::remove_all(temp_dir, ec);
+                show_alert(i18n::get("tui_audio_preview_title"), i18n::get("tui_audio_extract_failed"), true);
+                return;
+            }
+            if (!playback.success) {
+                fs::remove_all(temp_dir, ec);
+                const std::string message = playback.player.empty()
+                    ? i18n::get("tui_audio_no_player")
+                    : i18n::get("tui_audio_play_failed");
+                show_alert(i18n::get("tui_audio_preview_title"), message, true);
+                return;
+            }
+
+            // Synchronous players finish before control returns. Desktop
+            // launchers and termux-media-player are asynchronous, so retain
+            // their temporary file for the external application.
+            if (!playback.keep_file) {
+                fs::remove_all(temp_dir, ec);
+            }
+            show_alert(
+                i18n::get("tui_audio_preview_title"),
+                i18n::get("tui_audio_play_started", {{"PLAYER", playback.player}}), false);
+        };
+
         auto main_renderer = Renderer([&]() -> Element {
+            // A phone terminal cannot usefully display both panels at once. Keep
+            // the same panel state and navigation, but present one panel at a
+            // time below the side-by-side layout width.
+            const bool narrow_layout = Terminal::Size().dimx < 100;
             Elements left_panel;
             std::string left_title = i18n::get("tui_file_list");
             if (!list.current_directory().empty()) {
@@ -371,14 +439,27 @@ namespace tui {
             Color focused_bg = Color::RGB(14, 28, 50);
             Color unfocused_bg = Color::RGB(12, 24, 42);
 
-            auto main_content = hbox({
-                vbox(left_panel) | size(WIDTH, EQUAL, kFileListWidth) | left_border |
-                    bgcolor(focus == PanelFocus::List ? focused_bg : unfocused_bg) |
-                    color(focus == PanelFocus::List ? Color::Blue : Color::GrayDark),
-                vbox(right_panel) | flex | right_border |
-                    bgcolor(focus == PanelFocus::Preview ? focused_bg : unfocused_bg) |
-                    color(focus == PanelFocus::Preview ? Color::White : Color::GrayDark),
-            });
+            Element list_panel = vbox(left_panel);
+            if (!narrow_layout) {
+                list_panel = list_panel | size(WIDTH, EQUAL, kFileListWidth);
+            } else {
+                list_panel = list_panel | flex;
+            }
+            list_panel = list_panel | left_border |
+                bgcolor(focus == PanelFocus::List ? focused_bg : unfocused_bg) |
+                color(focus == PanelFocus::List ? Color::Blue : Color::GrayDark);
+            auto preview_panel = vbox(right_panel) | flex | right_border |
+                bgcolor(focus == PanelFocus::Preview ? focused_bg : unfocused_bg) |
+                color(focus == PanelFocus::Preview ? Color::White : Color::GrayDark);
+
+            Element main_content;
+            if (narrow_layout) {
+                // Tab, Right, and Left continue to change focus. Rendering only
+                // the focused panel gives the preview its full terminal width.
+                main_content = focus == PanelFocus::List ? list_panel : preview_panel;
+            } else {
+                main_content = hbox({list_panel, preview_panel});
+            }
 
             Element document = vbox({
                 main_content | flex,
@@ -745,6 +826,11 @@ namespace tui {
                     state.extract.output_directory = ".";
                     state.mode = UiMode::ExtractDialog;
                 }
+                return true;
+            }
+
+            if (event == Event::Character('a')) {
+                play_selected_audio();
                 return true;
             }
 

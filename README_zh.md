@@ -13,7 +13,7 @@
 
 - 通过文件签名识别归档格式，不依赖文件扩展名。
 - 一条命令覆盖压缩、解压、验证和归档浏览。
-- 内置 TUI 归档浏览器，可列表、搜索、预览、提取和编辑归档条目。
+- 内置 TUI 归档浏览器，可列表、搜索、预览、提取、编辑和播放音频归档条目。
 - 支持 tar、gzip、bzip2、xz、zip、7z、rar、lz4、zstd 和 xar。
 - 在底层工具支持的范围内，支持 zip、7z 和 rar 的密码解压。
 - TUI 基于 FTXUI；仓库内包含 vendored static FTXUI。
@@ -23,8 +23,11 @@
 ## 安装
 
 ```bash
-# Ubuntu/Debian 运行时和构建依赖
-sudo apt install -y tar unrar gzip bzip2 xz-utils zip unzip p7zip-full lz4 zstd g++ cmake make
+# Ubuntu/Debian 构建和归档依赖
+sudo apt install -y build-essential cmake make tar unrar gzip bzip2 xz-utils zip unzip p7zip-full lz4 zstd
+
+# 可选的音频播放和桌面打开工具
+sudo apt install -y mpv ffmpeg pulseaudio-utils alsa-utils xdg-utils
 
 git clone https://github.com/Hitmux/hitpag.git
 cd hitpag
@@ -41,6 +44,27 @@ CMake 配置时会解析 FTXUI。hitpag 优先使用兼容的系统静态 FTXUI�
 cmake .. -DHITPAG_FORCE_VENDORED_FTXUI=ON
 cmake .. -DHITPAG_FORCE_SYSTEM_FTXUI=ON
 ```
+
+### 各平台依赖
+
+归档工具按实际使用的格式安装。音频预览会选择第一个可用的播放器：`mpv`、`ffplay`、`termux-media-player`、`paplay`、`aplay` 或 `xdg-open`。
+
+**Arch Linux**
+
+```bash
+sudo pacman -S --needed base-devel cmake tar gzip bzip2 xz zip unzip p7zip lz4 zstd unrar
+sudo pacman -S --needed mpv ffmpeg alsa-utils xdg-utils
+```
+
+**Termux**
+
+```bash
+pkg update
+pkg install clang cmake make tar gzip bzip2 xz zip unzip p7zip lz4 zstd
+pkg install mpv ffmpeg termux-api
+```
+
+`unrar` 可能需要额外的 Termux 软件源。只有使用 Android 侧 Termux 集成功能时才需要 `termux-api`。
 
 ---
 
@@ -62,10 +86,13 @@ hitpag archive.tar.gz
 - `Left`：返回父目录或文件列表。
 - `/`：搜索条目。
 - `x`：提取当前条目。
+- `a`：使用可用的系统或 Termux 播放器播放当前音频条目。
 - `e`：用外部编辑器编辑当前文件。
 - `s`：配置编辑器命令。
 - `?`：打开帮助。
 - `q` 或 `Esc`：退出或关闭当前对话框。
+
+音频预览会依次尝试 `mpv`、`ffplay`、`termux-media-player`、`paplay`、`aplay` 和 `xdg-open`。
 
 ---
 

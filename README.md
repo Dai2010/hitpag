@@ -13,7 +13,7 @@
 
 - Detects archive formats by file signature instead of filename extension.
 - Uses one command for compression, extraction, verification, and archive browsing.
-- Includes a TUI archive browser for listing, searching, previewing, extracting, and editing archive entries.
+- Includes a TUI archive browser for listing, searching, previewing, extracting, editing, and playing audio entries.
 - Supports tar, gzip, bzip2, xz, zip, 7z, rar, lz4, zstd, and xar.
 - Supports password-protected zip, 7z, and rar extraction where the underlying tool supports it.
 - Uses FTXUI for the terminal interface; a vendored static FTXUI copy is included.
@@ -23,8 +23,11 @@
 ## Install
 
 ```bash
-# Ubuntu/Debian runtime and build dependencies
-sudo apt install -y tar unrar gzip bzip2 xz-utils zip unzip p7zip-full lz4 zstd g++ cmake make
+# Ubuntu/Debian build and archive dependencies
+sudo apt install -y build-essential cmake make tar unrar gzip bzip2 xz-utils zip unzip p7zip-full lz4 zstd
+
+# Optional audio playback and desktop fallback
+sudo apt install -y mpv ffmpeg pulseaudio-utils alsa-utils xdg-utils
 
 git clone https://github.com/Hitmux/hitpag.git
 cd hitpag
@@ -41,6 +44,27 @@ FTXUI is resolved during CMake configuration. hitpag prefers a compatible system
 cmake .. -DHITPAG_FORCE_VENDORED_FTXUI=ON
 cmake .. -DHITPAG_FORCE_SYSTEM_FTXUI=ON
 ```
+
+### Dependencies by platform
+
+The archive tools are needed at runtime for the formats you use. Audio preview selects the first available player (`mpv`, `ffplay`, `termux-media-player`, `paplay`, `aplay`, or `xdg-open`).
+
+**Arch Linux**
+
+```bash
+sudo pacman -S --needed base-devel cmake tar gzip bzip2 xz zip unzip p7zip lz4 zstd unrar
+sudo pacman -S --needed mpv ffmpeg alsa-utils xdg-utils
+```
+
+**Termux**
+
+```bash
+pkg update
+pkg install clang cmake make tar gzip bzip2 xz zip unzip p7zip lz4 zstd
+pkg install mpv ffmpeg termux-api
+```
+
+`unrar` may require an additional Termux repository. `termux-api` is only needed when using Android-side Termux integrations.
 
 ---
 
@@ -62,10 +86,13 @@ Core TUI actions:
 - `Left`: return to the parent directory or file list.
 - `/`: search entries.
 - `x`: extract the selected entry.
+- `a`: play the selected audio entry with an available system or Termux player.
 - `e`: edit the selected file through an external editor.
 - `s`: configure the editor command.
 - `?`: open help.
 - `q` or `Esc`: quit or close the current dialog.
+
+Audio preview uses the first available player from `mpv`, `ffplay`, `termux-media-player`, `paplay`, `aplay`, and `xdg-open`.
 
 ---
 
