@@ -1,9 +1,9 @@
-name: maint-p7zip-ci
+name: CI
 
 on:
   push:
     branches:
-      - maint/p7zip-integration-fixes
+      - main
   pull_request:
     branches:
       - main
